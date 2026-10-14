@@ -1,0 +1,137 @@
+* {
+    box-sizing: border-box;
+}
+
+body {
+    width: 280px;
+    padding: 20px 16px;
+    background: rgba(241, 243, 244, 0.96);
+    font-family: 'Google Sans', 'Segoe UI', sans-serif;
+    color: #5f6368;
+    border-radius: 16px;
+    overflow: hidden;
+    margin: 0;
+}
+
+.logo-area {
+    text-align: center;
+    margin-bottom: 12px;
+    font-size: 28px;
+    opacity: 0.55;
+}
+
+.title {
+    font-size: 16px;
+    font-weight: 500;
+    color: #80868b;
+    margin-bottom: 16px;
+    text-align: center;
+}
+
+.btn-open {
+    width: 100%;
+    padding: 12px 0;
+    background: rgba(218, 220, 224, 0.7);
+    border: 1px solid rgba(218, 220, 224, 0.9);
+    border-radius: 12px;
+    color: #5f6368;
+    font-size: 14px;
+    font-weight: 500;
+    cursor: pointer;
+    transition: background 0.15s ease;
+    box-shadow: none;
+}
+
+.btn-open:hover {
+    transform: none;
+    background: rgba(218, 220, 224, 0.95);
+    box-shadow: none;
+}
+
+.btn-open:active {
+    transform: translateY(0);
+}
+
+.divider {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    margin: 14px 0;
+}
+
+.divider span {
+    font-size: 12px;
+    color: #5f6368;
+}
+
+.divider hr {
+    flex: 1;
+    border: none;
+    border-top: 1px solid #dadce0;
+}
+
+.shortcut-hint {
+    text-align: center;
+    font-size: 12px;
+    color: #5f6368;
+    letter-spacing: 0.3px;
+}
+
+.footer {
+    text-align: center;
+    font-size: 11px;
+    color: #9aa0a6;
+    margin-top: 14px;
+}
+
+.key-label {
+    display: block;
+    font-size: 12px;
+    font-weight: 600;
+    margin-bottom: 6px;
+    color: #5f6368;
+}
+
+#api-key {
+    width: 100%;
+    padding: 9px 10px;
+    border: 1px solid #dadce0;
+    border-radius: 10px;
+    font-size: 12px;
+    margin-bottom: 8px;
+    outline: none;
+}
+
+#api-key:focus {
+    border-color: #9aa0a6;
+}
+
+.key-status {
+    font-size: 12px;
+    min-height: 16px;
+    margin: 6px 0 2px;
+    text-align: center;
+}
+
+.key-status.ok { color: #188038; }
+.key-status.err { color: #d93025; }
+
+.btn-ghost {
+    width: 100%;
+    padding: 10px 0;
+    background: transparent;
+    border: 1px solid rgba(218, 220, 224, 0.9);
+    border-radius: 12px;
+    color: #80868b;
+    font-size: 13px;
+    font-weight: 500;
+    cursor: pointer;
+}
+
+.help {
+    text-align: center;
+    font-size: 12px;
+    margin-top: 8px;
+}
+
+.help a { color: #80868b; }

@@ -1,0 +1,45 @@
+/* 1. XÓA SỔ MỌI NỀN VÀ BÓNG CỦA CÁC THẺ HTML */
+*, *::before, *::after {
+    background: transparent !important;
+    background-color: transparent !important;
+    background-image: none !important;
+    box-shadow: none !important;
+    border-color: transparent !important;
+}
+
+/* 2. ẨN CÁC PHẦN TỬ THỪA (HEADER, MENU, SIDEBAR) */
+header,
+.mdc-top-app-bar,
+[data-test-id="conversation-header"],
+button[aria-label="Main menu"],
+button[aria-label="Collapse menu"],
+.sidebar-container,
+navigation-drawer,
+.cdk-overlay-container {
+    display: none !important;
+    opacity: 0 !important;
+    pointer-events: none !important;
+}
+
+/* 3. ĐỊNH DẠNG CHỮ ĐỂ NHÌN RÕ TRÊN NỀN TRANG WEB */
+p, span, div, h1, h2, h3, h4, h5, h6, input, textarea, button, svg, a {
+    color: #000000 !important;
+    fill: #000000 !important;
+}
+
+/* 4. TẠO VIỀN MỜ CHO Ô GÕ CHỮ ĐỂ BIẾT VỊ TRÍ GÕ */
+[data-test-id="search-box"],
+.search-box-wrapper,
+textarea {
+    border: 1px solid rgba(0, 0, 0, 0.3) !important;
+    border-radius: 24px !important;
+    background: rgba(255, 255, 255, 0.5) !important;
+    backdrop-filter: blur(5px) !important;
+}
+
+/* 5. GHI ĐÈ ĐỂ TRÁNH MẢNG TRẮNG CUỐI TRANG */
+body, html {
+    background: transparent !important;
+    margin: 0 !important;
+    padding: 0 !important;
+}

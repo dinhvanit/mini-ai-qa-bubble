@@ -1,0 +1,47 @@
+{
+  "manifest_version": 3,
+  "name": "Mini Gemini Drag Bubble",
+  "version": "2.3.0",
+  "description": "Bong bóng Gemini mini: bôi đen để hỏi, trả lời ngay tại chỗ.",
+  "permissions": [
+    "storage",
+    "scripting",
+    "activeTab",
+    "tabs",
+    "contextMenus"
+  ],
+  "host_permissions": [
+    "<all_urls>",
+    "https://generativelanguage.googleapis.com/*"
+  ],
+  "background": {
+    "service_worker": "background.js"
+  },
+  "action": {
+    "default_title": "Mini Gemini Drag Bubble",
+    "default_popup": "popup.html"
+  },
+  "content_scripts": [
+    {
+      "matches": ["<all_urls>"],
+      "js": ["content-bubble.js"],
+      "run_at": "document_idle"
+    }
+  ],
+  "commands": {
+    "_execute_action": {
+      "suggested_key": {
+        "default": "Ctrl+Shift+G",
+        "mac": "MacCtrl+Shift+G"
+      },
+      "description": "Mở Gemini popup"
+    },
+    "toggle-bubble": {
+      "suggested_key": {
+        "default": "Alt+G",
+        "mac": "MacCtrl+Shift+G"
+      },
+      "description": "Mở Gemini popup (dự phòng, dùng trên Linux)"
+    }
+  }
+}
