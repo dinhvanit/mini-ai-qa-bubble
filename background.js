@@ -22,7 +22,7 @@ chrome.commands.onCommand.addListener((command) => {
 chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
   if (!msg) return;
   if (msg.action === "askGemini") {
-    askGemini(msg.text, msg.question).then(sendResponse);
+    askGemini(msg.text, msg.question, msg.qtype).then(sendResponse);
     return true; // async
   }
   if (msg.action === "openGeminiFull" || msg.action === "openGemini") {
@@ -80,15 +80,24 @@ async function discoverModel(apiKey) {
   return { ok: true, model: pick.name.replace(/^models\//, "") };
 }
 
-async function askGemini(selectionText, question) {
+const QTYPE_INSTRUCTIONS = {
+  single: "Đây là câu hỏi trắc nghiệm chỉ có 1 đáp án đúng. Yêu cầu trình bày: DÒNG ĐẦU TIÊN chỉ ghi đáp án đúng, đúng định dạng \"Đáp án: X\" (X là chữ cái hoặc nội dung phương án). Từ dòng thứ hai trở đi mới giải thích ngắn gọn vì sao đúng và vì sao các phương án khác sai.",
+  multi: "Đây là câu hỏi trắc nghiệm có NHIỀU đáp án đúng. Yêu cầu trình bày: DÒNG ĐẦU TIÊN ghi tất cả đáp án đúng, đúng định dạng \"Đáp án: A, C\". Từ dòng thứ hai trở đi mới giải thích ngắn gọn từng phương án.",
+  tf: "Đây là câu hỏi đúng/sai theo từng ý (a, b, c, d...). Yêu cầu trình bày: đầu tiên liệt kê kết quả từng ý trên các dòng riêng (vd: a) Đúng, b) Sai), sau đó giải thích ngắn gọn từng ý.",
+  essay: "Đây là câu hỏi tự luận. Trình bày câu trả lời hoàn chỉnh, ngắn gọn, đủ ý chính, có thể gạch đầu dòng các luận điểm."
+};
+
+async function askGemini(selectionText, question, qtype) {
   const stored = await chrome.storage.local.get(["geminiApiKey", "geminiModel"]);
   const apiKey = (stored.geminiApiKey || "").trim();
   if (!apiKey) {
     return { ok: false, needKey: true, error: "Chưa có API key. Bấm icon extension → dán key mới (key cũ đã lộ, nên tạo lại)." };
   }
-  const prompt = question
-    ? `Ngữ cảnh:\n${selectionText}\n\nYêu cầu: ${question}\n\nTrả lời ngắn gọn bằng tiếng Việt.`
-    : `Giải thích ngắn gọn đoạn sau bằng tiếng Việt:\n\n${selectionText}`;
+  const typeInstruction = QTYPE_INSTRUCTIONS[qtype] || QTYPE_INSTRUCTIONS.single;
+  const baseTask = question
+    ? `Ngữ cảnh:\n${selectionText}\n\nYêu cầu: ${question}`
+    : `Nội dung câu hỏi:\n${selectionText}`;
+  const prompt = `${typeInstruction}\n\n${baseTask}\n\nTrả lời bằng tiếng Việt.`;
   try {
     // Model cũ đã lưu (2.x/1.5) luôn 404 với user mới -> bỏ qua, ưu tiên 3.x
     const savedModel = stored.geminiModel && !DEAD_MODELS.includes(String(stored.geminiModel).replace(/^models\//, ""))
@@ -173,7 +182,7 @@ chrome.windows.onRemoved.addListener(async (id) => {
 
 chrome.runtime.onInstalled.addListener(() => {
   try {
-    chrome.contextMenus.create({ id: "ask-gemini-selection", title: '✨ Hỏi Gemini: "%s"', contexts: ["selection"] });
+    chrome.contextMenus.create({ id: "ask-gemini-selection", title: '○ Hỏi: "%s"', contexts: ["selection"] });
   } catch (e) {}
 });
 
