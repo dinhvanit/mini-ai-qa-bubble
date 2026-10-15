@@ -160,11 +160,20 @@
 
     const mini = document.createElement("div");
     mini.id = "mini-gemini-mini";
-    css(mini, "position:fixed;display:none;z-index:2147483647;width:300px;max-height:260px;overflow-y:auto;overscroll-behavior:contain;background:#fff;border:1px solid #dadce0;border-radius:12px;box-shadow:0 8px 24px rgba(0,0,0,.25);padding:10px 12px;font-size:13px;line-height:1.5;color:#202124;font-family:sans-serif;");
+    css(mini, "position:fixed;display:none;z-index:2147483647;width:250px;min-width:200px;min-height:36px;max-width:60vw;max-height:60vh;overflow:hidden;background:#fff;border:1px solid #dadce0;border-radius:10px;box-shadow:0 8px 24px rgba(0,0,0,.25);font-size:12px;line-height:1.5;color:#202124;font-family:sans-serif;resize:both;");
     document.body.appendChild(mini);
+    // Spinner + dots cho trạng thái "đang nghĩ" (inject 1 lần)
+    if (!document.getElementById("mini-gemini-mini-style")) {
+      const st = document.createElement("style");
+      st.id = "mini-gemini-mini-style";
+      st.textContent = "@keyframes mg-spin{to{transform:rotate(360deg)}}@keyframes mg-blink{0%,100%{opacity:.25}50%{opacity:1}}";
+      document.head.appendChild(st);
+    }
 
     let currentSelection = "";
     let miniRect = null;
+    let miniCollapsed = false;
+    let miniReqId = 0;
     askBtn.addEventListener("mousedown", (e) => e.preventDefault());
     askBtn.addEventListener("click", () => {
       const t = currentSelection;
@@ -173,41 +182,92 @@
       if (t) showMini(t, r, "");
     });
 
+    function miniHeaderHTML(status, qtypeLabel, collapsed) {
+      const dot = status === "loading"
+        ? `<span style="display:inline-block;width:10px;height:10px;border-radius:50%;border:2px solid #dadce0;border-top-color:#80868b;animation:mg-spin .8s linear infinite;vertical-align:-1px;"></span>`
+        : status === "done"
+          ? `<span style="color:#188038;font-size:12px;">✓</span>`
+          : `<span style="color:#d93025;font-size:12px;">!</span>`;
+      return `<div class="mg-mini-head" title="Thu/mở" style="display:flex;justify-content:space-between;gap:6px;align-items:center;padding:5px 8px;background:rgba(241,243,244,0.95);border-bottom:1px solid #eee;cursor:pointer;user-select:none;">` +
+        `<span style="font-size:12px;color:#9aa0a6;white-space:nowrap;">○ ${dot}</span>` +
+        `<span style="display:flex;gap:8px;align-items:center;"><span class="mg-mini-toggle" style="color:#9aa0a6;font-size:11px;">${collapsed ? "▸" : "▾"}</span><span class="mg-mini-close" style="cursor:pointer;color:#9aa0a6;font-size:11px;">✕</span></span></div>`;
+    }
+    function paintMiniCollapsed() {
+      const b = mini.querySelector(".mg-mini-body");
+      const t = mini.querySelector(".mg-mini-toggle");
+      if (b) b.style.display = miniCollapsed ? "none" : "block";
+      if (t) t.textContent = miniCollapsed ? "▸" : "▾";
+    }
+    function bindMiniChrome(onToggle) {
+      const head = mini.querySelector(".mg-mini-head");
+      if (head) head.onclick = (e) => {
+        if (e.target && e.target.closest && e.target.closest(".mg-mini-close")) return;
+        miniCollapsed = !miniCollapsed;
+        paintMiniCollapsed();
+        if (onToggle) onToggle();
+      };
+      const close = mini.querySelector(".mg-mini-close");
+      if (close) close.onclick = (e) => { e.stopPropagation(); mini.style.display = "none"; };
+    }
+
     function showMini(text, rect, question) {
-      mini.style.left = Math.min(rect ? rect.left : 100, window.innerWidth - 320) + "px";
+      mini.style.left = Math.min(rect ? rect.left : 100, window.innerWidth - 270) + "px";
       mini.style.top = ((rect ? rect.bottom : 100) + 8) + "px";
       const qt = quizType;
+      const myReq = ++miniReqId;
+      miniCollapsed = false;
+      const shortQ = `${escapeHtml(text.slice(0, 80))}${text.length > 80 ? "…" : ""}`;
+      // Loading: ẨN dropdown, header chỉ còn icon nhỏ, body tối giản.
       mini.innerHTML =
-        typeRowHTML() +
-        `<div style="display:flex;justify-content:space-between;gap:8px;align-items:flex-start;color:#5f6368;font-size:12px;margin:6px 0;"><span>“${escapeHtml(text.slice(0, 120))}${text.length > 120 ? "…" : ""}”</span><span class="mg-mini-close" style="cursor:pointer;color:#9aa0a6;">✕</span></div><div style="color:#9aa0a6;">○ đang nghĩ...</div>`;
+        miniHeaderHTML("loading", QTYPES[qt] || qt, miniCollapsed) +
+        `<div class="mg-mini-body" style="padding:8px 10px;max-height:46vh;overflow-y:auto;overscroll-behavior:contain;">` +
+        `<div style="color:#9aa0a6;font-size:11px;margin-bottom:4px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">“${shortQ}”</div>` +
+        `<div style="color:#9aa0a6;font-size:12px;"><span style="animation:mg-blink 1s infinite">● ● ●</span></div>` +
+        `</div>`;
       mini.style.display = "block";
-      bindTypeRow(mini, () => showMini(text, rect, question));
-      mini.querySelector(".mg-mini-close").onclick = () => { mini.style.display = "none"; };
+      bindMiniChrome();
       // sendMessage NÉM ĐỒNG BỘ khi extension vừa Reload (context invalidated),
       // .catch() không bắt được nên phải try/catch bao ngoài.
       let req;
       try {
         req = chrome.runtime.sendMessage({ action: "askGemini", text, question, qtype: qt });
       } catch (e) {
-        mini.innerHTML = `<div style="color:#d93025;">Extension vừa Reload — hãy Ctrl+R trang này rồi hỏi lại.</div>`;
+        if (myReq !== miniReqId) return;
+        mini.innerHTML =
+          miniHeaderHTML("error", QTYPES[qt] || qt, miniCollapsed) +
+          `<div class="mg-mini-body" style="padding:10px 12px;"><div style="color:#d93025;">Extension vừa Reload — hãy Ctrl+R trang này rồi hỏi lại.</div></div>`;
+        bindMiniChrome();
         return;
       }
       Promise.resolve(req).then((res) => {
+        if (myReq !== miniReqId) return; // request cũ (đổi loại giữa chừng) -> bỏ
         if (res?.ok) {
           mini.innerHTML =
+            miniHeaderHTML("done", QTYPES[qt] || qt, miniCollapsed) +
+            `<div class="mg-mini-body" style="padding:8px 10px;max-height:46vh;overflow-y:auto;overscroll-behavior:contain;">` +
             typeRowHTML() +
-            `<div style="display:flex;justify-content:space-between;gap:8px;align-items:flex-start;color:#5f6368;font-size:12px;margin:6px 0;"><span>“${escapeHtml(text.slice(0, 120))}${text.length > 120 ? "…" : ""}”</span><span class="mg-mini-close" style="cursor:pointer;color:#9aa0a6;">✕</span></div>` +
+            `<div style="color:#9aa0a6;font-size:11px;margin:6px 0;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">“${shortQ}”</div>` +
             renderAnswerHTML(res.text, qt) +
-            `<div style="margin-top:8px;display:flex;gap:6px;"><button id="mg-copy" style="flex:1;border:1px solid #dadce0;background:#fff;border-radius:8px;padding:5px;cursor:pointer;font-size:12px;">Copy</button><button id="mg-more" style="flex:1;background:rgba(218,220,224,0.8);color:#5f6368;border:none;border-radius:8px;padding:5px;cursor:pointer;font-size:12px;">Hỏi thêm</button></div>`;
+            `<div style="margin-top:8px;display:flex;gap:6px;"><button id="mg-copy" style="flex:1;border:1px solid #dadce0;background:#fff;border-radius:8px;padding:5px;cursor:pointer;font-size:12px;">Copy</button><button id="mg-more" style="flex:1;background:rgba(218,220,224,0.8);color:#5f6368;border:none;border-radius:8px;padding:5px;cursor:pointer;font-size:12px;">Hỏi thêm</button></div>` +
+            `</div>`;
+          bindMiniChrome();
+          paintMiniCollapsed();
           bindTypeRow(mini, () => showMini(text, rect, question));
-          mini.querySelector(".mg-mini-close").onclick = () => { mini.style.display = "none"; };
           mini.querySelector("#mg-copy").onclick = () => navigator.clipboard.writeText(res.text).catch(() => {});
           mini.querySelector("#mg-more").onclick = () => { mini.style.display = "none"; toggleChat(true); sendAsk(text, ""); };
         } else {
-          mini.innerHTML = `<div style="color:#d93025;">${escapeHtml(res?.error || "Lỗi không rõ")}</div><div style="font-size:12px;color:#5f6368;margin-top:4px;">Bấm icon extension để nhập API key.</div>`;
+          mini.innerHTML =
+            miniHeaderHTML("error", QTYPES[qt] || qt, miniCollapsed) +
+            `<div class="mg-mini-body" style="padding:10px 12px;"><div style="color:#d93025;">${escapeHtml(res?.error || "Lỗi không rõ")}</div><div style="font-size:12px;color:#5f6368;margin-top:4px;">Bấm icon extension để nhập API key.</div></div>`;
+          bindMiniChrome();
+          paintMiniCollapsed();
         }
       }).catch(() => {
-        mini.innerHTML = `<div style="color:#d93025;">Extension vừa reload — hãy Ctrl+R trang rồi thử lại.</div>`;
+        if (myReq !== miniReqId) return;
+        mini.innerHTML =
+          miniHeaderHTML("error", QTYPES[qt] || qt, miniCollapsed) +
+          `<div class="mg-mini-body" style="padding:10px 12px;"><div style="color:#d93025;">Extension vừa reload — hãy Ctrl+R trang rồi thử lại.</div></div>`;
+        bindMiniChrome();
       });
     }
 
