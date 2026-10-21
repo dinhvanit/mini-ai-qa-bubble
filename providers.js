@@ -314,5 +314,59 @@ function aiStorageKeys() {
     keys.push(p.keysStorage, p.activeStorage);
     if (p.singleKey) keys.push(p.singleKey);
   }
+  keys.push(TAVILY_PROVIDER.keysStorage, TAVILY_PROVIDER.activeStorage, TAVILY_PROVIDER.storage);
   return keys;
+}
+
+// ---------- Tavily web search ----------
+// Tavily là công cụ tra cứu, không phải LLM nên tách khỏi AI_PROVIDERS.
+// Package @tavily/core chỉ là wrapper quanh REST API dưới đây; extension không
+// có bundler nên gọi thẳng fetch để giữ kiểu "load unpacked" không cần build.
+
+const TAVILY_PROVIDER = {
+  id: "tavily",
+  name: "Tavily",
+  endpoint: "https://api.tavily.com/search",
+  keysStorage: "tavilyApiKeys",
+  activeStorage: "tavilyActiveIdx",
+  storage: "tavilyConfig",
+  keyUrl: "https://app.tavily.com/home",
+  keyPlaceholder: "tvly-...",
+  defaultConfig: {
+    enabled: true,
+    includeAnswer: false,
+    depth: "advanced",
+    maxResults: 5,
+    topic: "general"
+  }
+};
+
+function aiTavilyKeys(stored) {
+  return aiNormalizeKeys(stored && stored[TAVILY_PROVIDER.keysStorage]);
+}
+
+function aiTavilyConfig(stored) {
+  const raw = stored && stored[TAVILY_PROVIDER.storage] && typeof stored[TAVILY_PROVIDER.storage] === "object"
+    ? stored[TAVILY_PROVIDER.storage]
+    : {};
+  const d = TAVILY_PROVIDER.defaultConfig;
+  return {
+    enabled: raw.enabled === undefined ? d.enabled : !!raw.enabled,
+    includeAnswer: raw.includeAnswer === undefined ? d.includeAnswer : !!raw.includeAnswer,
+    depth: raw.depth === "basic" ? "basic" : d.depth,
+    maxResults: Math.max(1, Math.min(10, parseInt(raw.maxResults, 10) || d.maxResults)),
+    topic: ["general", "news", "finance"].includes(raw.topic) ? raw.topic : d.topic
+  };
+}
+
+// Gộp ngữ cảnh bôi đen + câu hỏi thành 1 query gọn cho Tavily (giới hạn ~400 ký tự).
+function aiTavilyQuery(selectionText, question) {
+  const q = String(question || "").replace(/\s+/g, " ").trim();
+  const sel = String(selectionText || "").replace(/\s+/g, " ").trim();
+  let query = q || sel;
+  if (q && sel) {
+    // Câu hỏi chỉ là chỉ dẫn ngắn ("giải thích", "dịch"...) -> search theo nội dung.
+    query = sel.length > q.length * 1.5 ? `${sel.slice(0, 300)} ${q}`.trim() : `${q} ${sel.slice(0, 240)}`.trim();
+  }
+  return query.slice(0, 380);
 }

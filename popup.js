@@ -21,7 +21,17 @@ async function init() {
         open: document.getElementById("btn-open"),
         keyLink: document.getElementById("key-link"),
         promptTextarea: document.getElementById("prompt-textarea"),
-        promptSave: document.getElementById("btn-save-prompt")
+        promptSave: document.getElementById("btn-save-prompt"),
+        tavilyToggle: document.getElementById("chk-tavily"),
+        tavilyAnswer: document.getElementById("chk-tavily-answer"),
+        tavilyDepth: document.getElementById("sel-tavily-depth"),
+        tavilyResults: document.getElementById("num-tavily-results"),
+        tavilyTextarea: document.getElementById("tavily-textarea"),
+        tavilySave: document.getElementById("btn-save-tavily"),
+        tavilyTest: document.getElementById("btn-test-tavily"),
+        tavilyKeyLink: document.getElementById("tavily-key-link"),
+        bgWarn: document.getElementById("bg-warn"),
+        reloadExt: document.getElementById("btn-reload-ext")
     };
 
     const stored = await chrome.storage.local.get(aiStorageKeys());
@@ -62,6 +72,83 @@ async function init() {
     function setStatus(msg, ok) {
         el.status.textContent = msg || "";
         el.status.className = "status" + (ok === true ? " ok" : ok === false ? " err" : "");
+    }
+
+    // Background có code mới không? SW có thể đang giữ bản cũ trong RAM nên thử vài lần.
+    async function backgroundReady() {
+        for (let i = 0; i < 3; i++) {
+            try {
+                const bg = await chrome.runtime.sendMessage({ action: "ping" });
+                if (bg && bg.tavily) return true;
+            } catch (e) {}
+            if (i < 2) await new Promise((r) => setTimeout(r, 400));
+        }
+        return false;
+    }
+
+    el.reloadExt.addEventListener("click", () => {
+        try {
+            chrome.tabs.create({ url: "chrome://extensions" });
+            window.close();
+        } catch (e) {}
+    });
+
+    // ---- Tavily web search ----
+    function renderTavily() {
+        const cfg = aiTavilyConfig(stored);
+        el.tavilyToggle.checked = cfg.enabled;
+        el.tavilyAnswer.checked = cfg.includeAnswer;
+        el.tavilyDepth.value = cfg.depth;
+        el.tavilyResults.value = String(cfg.maxResults);
+        el.tavilyTextarea.value = aiTavilyKeys(stored).join("\n");
+        el.tavilyKeyLink.href = TAVILY_PROVIDER.keyUrl;
+        el.tavilyKeyLink.title = TAVILY_PROVIDER.keyUrl;
+    }
+
+    function tavilyConfigFromUI() {
+        return aiTavilyConfig({
+            [TAVILY_PROVIDER.storage]: {
+                enabled: el.tavilyToggle.checked,
+                includeAnswer: el.tavilyAnswer.checked,
+                depth: el.tavilyDepth.value,
+                maxResults: parseInt(el.tavilyResults.value, 10),
+                topic: aiTavilyConfig(stored).topic
+            }
+        });
+    }
+
+    async function saveTavilyConfig() {
+        const cfg = tavilyConfigFromUI();
+        stored[TAVILY_PROVIDER.storage] = cfg;
+        await chrome.storage.local.set({ [TAVILY_PROVIDER.storage]: cfg });
+    }
+
+    async function saveTavily(silent) {
+        const keys = aiParseKeys(el.tavilyTextarea.value);
+        const cfg = tavilyConfigFromUI();
+        const prevIdx = Number(stored[TAVILY_PROVIDER.activeStorage] || 0) || 0;
+        const idx = keys.length ? Math.min(Math.max(0, prevIdx), keys.length - 1) : 0;
+
+        await chrome.storage.local.set({
+            [TAVILY_PROVIDER.keysStorage]: keys,
+            [TAVILY_PROVIDER.activeStorage]: idx,
+            [TAVILY_PROVIDER.storage]: cfg
+        });
+        stored[TAVILY_PROVIDER.keysStorage] = keys;
+        stored[TAVILY_PROVIDER.activeStorage] = idx;
+        stored[TAVILY_PROVIDER.storage] = cfg;
+
+        if (!silent) {
+            setStatus(
+                !cfg.enabled
+                    ? "Tavily: đã tắt tra cứu web"
+                    : keys.length
+                        ? `Tavily: đã lưu ${keys.length} key · ${cfg.depth} · ${cfg.maxResults} nguồn`
+                        : "Tavily: đã lưu cấu hình nhưng chưa có key",
+                true
+            );
+        }
+        return keys;
     }
 
     function currentProvider() {
@@ -193,6 +280,57 @@ async function init() {
         }
     }
 
+    // Gọi Tavily trực tiếp từ popup: dùng khi background chưa kịp cập nhật,
+    // đồng thời trả lỗi thật của API (thay vì "không rõ").
+    async function tavilyDirect(query, key, cfg) {
+        const controller = new AbortController();
+        const timer = setTimeout(() => controller.abort(), 20000);
+        try {
+            const res = await fetch(TAVILY_PROVIDER.endpoint, {
+                method: "POST",
+                headers: {
+                    "Content-Type": "application/json",
+                    "Authorization": `Bearer ${String(key).trim()}`
+                },
+                body: JSON.stringify({
+                    query,
+                    search_depth: cfg.depth === "basic" ? "basic" : "advanced",
+                    topic: cfg.topic,
+                    max_results: cfg.maxResults,
+                    include_answer: cfg.includeAnswer ? "advanced" : false,
+                    include_images: false
+                }),
+                signal: controller.signal
+            });
+
+            const data = await res.json().catch(() => ({}));
+            if (!res.ok) {
+                const detail = data?.detail;
+                const msg = typeof detail === "string"
+                    ? detail
+                    : detail?.error || detail?.message || data?.error?.message || data?.error;
+                return {
+                    ok: false,
+                    status: res.status,
+                    error: String(msg || `HTTP ${res.status}`).slice(0, 200)
+                };
+            }
+
+            return {
+                ok: true,
+                answer: String(data?.answer || ""),
+                results: Array.isArray(data?.results) ? data.results : []
+            };
+        } catch (e) {
+            return {
+                ok: false,
+                error: e.name === "AbortError" ? "hết thời gian chờ" : `lỗi mạng: ${e.message}`
+            };
+        } finally {
+            clearTimeout(timer);
+        }
+    }
+
     async function fetchModelsFor(p, key) {
         if (!p.modelsEndpoint) return [];
         const controller = new AbortController();
@@ -297,6 +435,66 @@ async function init() {
         setStatus(prefix ? "Đã lưu prompt prefix" : "Đã xoá prompt prefix", true);
     });
 
+    // ---- Tavily ----
+    el.tavilySave.addEventListener("click", () => saveTavily(false));
+
+    for (const ctl of [el.tavilyToggle, el.tavilyAnswer, el.tavilyDepth, el.tavilyResults]) {
+        ctl.addEventListener("change", () => {
+            saveTavilyConfig().catch(() => {});
+            setStatus(
+                el.tavilyToggle.checked
+                    ? `Tavily: ${el.tavilyDepth.value} · ${parseInt(el.tavilyResults.value, 10) || 5} nguồn`
+                    : "Tavily: đã tắt tra cứu web",
+                null
+            );
+        });
+    }
+
+    el.tavilyTest.addEventListener("click", async () => {
+        const keys = aiParseKeys(el.tavilyTextarea.value);
+        if (!keys.length) {
+            setStatus("Chưa có Tavily key", false);
+            return;
+        }
+
+        setStatus("Đang tra cứu thử bằng Tavily...", null);
+
+        const cfg = tavilyConfigFromUI();
+        let res = null;
+        let viaBackground = true;
+
+        try {
+            res = await chrome.runtime.sendMessage({
+                action: "tavilySearch",
+                query: "tin tức công nghệ mới nhất",
+                key: keys[0],
+                config: cfg
+            });
+        } catch (e) {
+            res = null;
+        }
+
+        // Background cũ / chưa reload -> không trả lời. Gọi thẳng API để vẫn test được key.
+        if (!res) {
+            viaBackground = false;
+            el.bgWarn.hidden = false;
+            res = await tavilyDirect("tin tức công nghệ mới nhất", keys[0], cfg);
+        }
+
+        if (res?.ok) {
+            const n = Array.isArray(res.results) ? res.results.length : 0;
+            const top = res.results?.[0]?.title ? ` · ${res.results[0].title.slice(0, 36)}` : "";
+            setStatus(
+                viaBackground
+                    ? `Tavily OK ✓ ${n} nguồn${top}`
+                    : `Tavily OK ✓ ${n} nguồn${top} · key tốt, nhưng background chưa cập nhật`,
+                true
+            );
+        } else {
+            setStatus(`Tavily lỗi: ${res?.error || "không nhận được phản hồi"}`, false);
+        }
+    });
+
     el.test.addEventListener("click", async () => {
         const p = currentProvider();
         const keys = aiParseKeys(el.textarea.value);
@@ -323,10 +521,16 @@ async function init() {
     // Lần đầu mở popup
     renderModels();
     renderMeta();
+    renderTavily();
     const loaded = await loadTokens();
+
+    el.bgWarn.hidden = await backgroundReady();
+
+    const tavilyOn = aiTavilyConfig(stored).enabled && aiTavilyKeys(stored).length > 0;
     setStatus(
         `Sẵn sàng · ${currentProvider().name}` +
-        (loaded.keys.length ? ` · token ${loaded.idx + 1}/${loaded.keys.length}` : " · chưa có token"),
+        (loaded.keys.length ? ` · token ${loaded.idx + 1}/${loaded.keys.length}` : " · chưa có token") +
+        (tavilyOn ? " · 🔎 Tavily" : ""),
         null
     );
     refreshModels();

@@ -29,7 +29,17 @@
         <select id="sel-token"></select>
     </label>
 
+    <label class="toggle main-toggle">
+        <input type="checkbox" id="chk-tavily">
+        <span>🔎 Tra cứu web Tavily</span>
+    </label>
+    <div class="toggle-note">Tắt = trả lời thẳng bằng model (nhanh hơn, không tốn lượt Tavily)</div>
+
     <div id="status" class="status" role="status"></div>
+    <div id="bg-warn" class="bg-warn" hidden>
+        <span>Background chưa nạp code mới — bấm ↻ Reload ở Extensions rồi mở lại popup.</span>
+        <button id="btn-reload-ext" type="button" class="link-btn">Mở Extensions</button>
+    </div>
     <button id="btn-test" class="btn">Test token</button>
 
     <details class="manage">
@@ -50,6 +60,39 @@
             <span>áp dụng mọi provider</span>
         </div>
         <button id="btn-save-prompt" class="btn">Lưu prefix</button>
+    </details>
+
+    <details class="manage">
+        <summary>Web search · Tavily</summary>
+
+        <div class="field-row">
+            <label class="field">
+                <span>Độ sâu</span>
+                <select id="sel-tavily-depth">
+                    <option value="basic">basic</option>
+                    <option value="advanced">advanced</option>
+                </select>
+            </label>
+            <label class="field">
+                <span>Số nguồn</span>
+                <input type="number" id="num-tavily-results" min="1" max="10" step="1" value="5">
+            </label>
+        </div>
+
+        <label class="toggle">
+            <input type="checkbox" id="chk-tavily-answer">
+            <span>Lấy tóm tắt sẵn của Tavily <em>(chậm hơn)</em></span>
+        </label>
+
+        <textarea id="tavily-textarea" rows="2" spellcheck="false" autocomplete="off" placeholder="tvly-..."></textarea>
+        <div class="hint">
+            <span>Mỗi dòng 1 key</span>
+            <a id="tavily-key-link" target="_blank" rel="noreferrer">Lấy key</a>
+        </div>
+        <div class="btn-row">
+            <button id="btn-test-tavily" class="btn">Test search</button>
+            <button id="btn-save-tavily" class="btn">Lưu Tavily</button>
+        </div>
     </details>
 </main>
 

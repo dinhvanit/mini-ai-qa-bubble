@@ -17,6 +17,11 @@ chrome.commands.onCommand.addListener((command) => {
 
 chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
   if (!msg) return;
+  if (msg.action === "ping") {
+    // Dùng để popup phát hiện service worker còn chạy code cũ (chưa Reload extension).
+    sendResponse({ ok: true, version: chrome.runtime.getManifest().version, tavily: true });
+    return true;
+  }
   if (msg.action === "askGemini") {
     askGemini(msg.text, msg.question, msg.qtype).then(sendResponse);
     return true;
@@ -26,7 +31,38 @@ chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
     sendResponse({ ok: true });
     return true;
   }
+  if (msg.action === "tavilySearch") {
+    tavilySearchMessage(msg).then(sendResponse).catch((e) =>
+      sendResponse({ ok: false, error: String(e.message || e) })
+    );
+    return true;
+  }
 });
+
+// Test / tra cứu nhanh từ popup: cho phép truyền key + config chưa lưu.
+async function tavilySearchMessage(msg) {
+  const query = aiTavilyQuery(msg.query || "", "");
+  if (!query) return { ok: false, error: "Chưa có nội dung để tra cứu" };
+
+  const key = String(msg.key || "").trim();
+  const cfg = aiTavilyConfig({ [TAVILY_PROVIDER.storage]: msg.config || null });
+
+  if (key) {
+    const res = await tavilyRequest(query, key, cfg);
+    if (!res.ok) return { ok: false, error: res.error };
+    return { ok: true, answer: res.answer, results: res.results, text: tavilyFallbackText(res) };
+  }
+
+  const stored = await chrome.storage.local.get(aiStorageKeys());
+  const res = await runTavily(stored, query, cfg);
+  if (!res.ok) return { ok: false, error: res.error };
+  return {
+    ok: true,
+    answer: res.answer,
+    results: res.results,
+    text: tavilyFallbackText(res)
+  };
+}
 
 async function forwardToTab(payload) {
   const tabs = await chrome.tabs.query({ active: true, currentWindow: true });
@@ -128,6 +164,132 @@ async function saveActive(p, idx, key) {
   await chrome.storage.local.set(patch).catch(() => {});
 }
 
+// ---------- Tavily web search ----------
+
+const TAVILY_TIMEOUT = 12000;
+const TAVILY_MAX_CONTEXT = 6000;
+
+function tavilyErrorText(data, status) {
+  const detail = data?.detail;
+  const msg = typeof detail === "string"
+    ? detail
+    : detail?.error || detail?.message || data?.error?.message || data?.error || data?.message;
+  if (typeof msg === "string" && msg.trim()) return msg.trim();
+  if (detail) {
+    try { return JSON.stringify(detail).slice(0, 200); } catch (e) {}
+  }
+  return `HTTP ${status}`;
+}
+
+function tavilyResults(data) {
+  return (Array.isArray(data?.results) ? data.results : [])
+    .map((r) => ({
+      title: String(r?.title || r?.url || "").replace(/\s+/g, " ").trim(),
+      url: String(r?.url || "").trim(),
+      content: String(r?.content || "").replace(/\s+/g, " ").trim()
+    }))
+    .filter((r) => /^https?:\/\//i.test(r.url));
+}
+
+async function tavilyRequest(query, key, cfg) {
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), TAVILY_TIMEOUT);
+  try {
+    const res = await fetch(TAVILY_PROVIDER.endpoint, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        "Authorization": `Bearer ${String(key).trim()}`
+      },
+      body: JSON.stringify({
+        query,
+        search_depth: cfg.depth === "basic" ? "basic" : "advanced",
+        topic: cfg.topic,
+        max_results: cfg.maxResults,
+        include_answer: cfg.includeAnswer ? "advanced" : false,
+        include_raw_content: false,
+        include_images: false
+      }),
+      signal: controller.signal
+    });
+
+    const data = await res.json().catch(() => ({}));
+    if (!res.ok) {
+      return {
+        ok: false,
+        status: res.status,
+        auth: isAuthError(res.status, JSON.stringify(data || {})),
+        error: tavilyErrorText(data, res.status)
+      };
+    }
+
+    return {
+      ok: true,
+      answer: String(data?.answer || "").trim(),
+      results: tavilyResults(data)
+    };
+  } catch (e) {
+    return {
+      ok: false,
+      status: 0,
+      error: e.name === "AbortError" ? "hết thời gian chờ" : `lỗi mạng: ${String(e.message || e).slice(0, 120)}`
+    };
+  } finally {
+    clearTimeout(timer);
+  }
+}
+
+// Xoay vòng token Tavily, lưu lại token chạy được.
+async function runTavily(stored, query, cfg) {
+  const keys = aiTavilyKeys(stored);
+  if (!keys.length) return { ok: false, error: "chưa có Tavily key" };
+
+  const active = Number(stored[TAVILY_PROVIDER.activeStorage] || 0) || 0;
+  let lastErr = "";
+
+  for (const idx of tokenOrder(keys.length, active)) {
+    const res = await tavilyRequest(query, keys[idx], cfg);
+    if (res.ok && (res.answer || res.results.length)) {
+      if (idx !== active) {
+        await chrome.storage.local.set({ [TAVILY_PROVIDER.activeStorage]: idx }).catch(() => {});
+      }
+      return { ok: true, answer: res.answer, results: res.results, keyIndex: idx };
+    }
+    if (res.ok) return { ok: false, error: "không có kết quả" };
+    lastErr = `token ${idx + 1}: ${res.error}`;
+    if (!res.auth && res.status !== 429) break; // lỗi khác thì đổi token cũng vô ích
+  }
+
+  return { ok: false, error: lastErr || "không có kết quả" };
+}
+
+function tavilyContext(search) {
+  if (!search || !search.ok) return "";
+  const parts = [];
+  if (search.answer) parts.push(`Tóm tắt nhanh: ${search.answer}`);
+  search.results.forEach((r, i) => {
+    parts.push(`[${i + 1}] ${r.title}\n${r.url}\n${r.content.slice(0, 600)}`);
+  });
+  let out = parts.join("\n\n").trim();
+  if (out.length > TAVILY_MAX_CONTEXT) out = out.slice(0, TAVILY_MAX_CONTEXT) + "…";
+  return out;
+}
+
+function tavilySources(search, max) {
+  if (!search || !search.ok) return [];
+  return search.results.slice(0, max || 3).map((r) => ({ title: r.title, url: r.url }));
+}
+
+// Dùng được cả khi không có key LLM: trả thẳng câu tóm tắt / kết quả của Tavily.
+function tavilyFallbackText(search) {
+  if (!search || !search.ok) return "";
+  if (search.answer) return search.answer;
+  const rows = search.results.slice(0, 5).map((r, i) =>
+    `${i + 1}. ${r.title}\n${r.content.slice(0, 240)}\n${r.url}`
+  );
+  return rows.length ? `Kết quả tra cứu web:\n\n${rows.join("\n\n")}` : "";
+}
+
 async function discoverGeminiModel(apiKey) {
   const res = await fetch(AI_PROVIDERS.gemini.modelsEndpoint, {
     method: "GET",
@@ -155,8 +317,32 @@ async function askGemini(selectionText, question, qtype) {
   const stored = await chrome.storage.local.get(aiStorageKeys());
   const order = providerOrder(stored);
 
+  // Tra cứu web 1 lần cho cả câu hỏi, dùng chung cho mọi provider.
+  const searchCfg = aiTavilyConfig(stored);
+  let search = null;
+  if (searchCfg.enabled && aiTavilyKeys(stored).length) {
+    const query = aiTavilyQuery(selectionText, question);
+    if (query) search = await runTavily(stored, query, searchCfg);
+  }
+  const sources = tavilySources(search, 3);
+  const searchNote = search && !search.ok ? ` (Tavily lỗi: ${search.error})` : "";
+
   if (!order.length) {
-    return { ok: false, needKey: true, error: "Chưa có API key. Bấm icon extension → chọn provider và thêm token." };
+    const fallback = tavilyFallbackText(search);
+    if (fallback) {
+      return {
+        ok: true,
+        text: fallback,
+        provider: "tavily",
+        model: "Tavily · web search",
+        sources
+      };
+    }
+    return {
+      ok: false,
+      needKey: true,
+      error: `Chưa có API key. Bấm icon extension → thêm token LLM hoặc Tavily key.${searchNote}`
+    };
   }
 
   const typeInstruction = QTYPE_INSTRUCTIONS[qtype] || QTYPE_INSTRUCTIONS.single;
@@ -164,7 +350,11 @@ async function askGemini(selectionText, question, qtype) {
   const baseTask = question
     ? `Ngữ cảnh:\n${selectionText}\n\nYêu cầu: ${question}`
     : `Nội dung câu hỏi:\n${selectionText}`;
-  const prompt = `${prefix ? prefix + "\n\n" : ""}${typeInstruction}\n\n${baseTask}\n\nTrả lời bằng tiếng Việt.`;
+  const webContext = tavilyContext(search);
+  const webBlock = webContext
+    ? `\n\nKết quả tra cứu web (Tavily):\n${webContext}\n\nHãy dùng thông tin trên khi liên quan, đối chiếu với kiến thức của bạn; nếu mâu thuẫn thì ưu tiên nguồn đáng tin và ghi rõ nguồn dạng [1], [2] ở cuối câu trả lời.`
+    : "";
+  const prompt = `${prefix ? prefix + "\n\n" : ""}${typeInstruction}\n\n${baseTask}${webBlock}\n\nTrả lời bằng tiếng Việt.`;
 
   let lastErr = "";
 
@@ -201,7 +391,8 @@ async function askGemini(selectionText, question, qtype) {
             ok: true,
             text,
             provider: p.id,
-            model: `${p.name} · ${model}`
+            model: `${p.name} · ${model}`,
+            sources
           };
         }
 
@@ -236,7 +427,7 @@ async function askGemini(selectionText, question, qtype) {
           const text = extractText(p, data);
           if (text) {
             await saveActive(p, ki, key);
-            return { ok: true, text, provider: p.id, model: `${p.name} · ${found}` };
+            return { ok: true, text, provider: p.id, model: `${p.name} · ${found}`, sources };
           }
         }
       } catch (e) {
@@ -245,7 +436,13 @@ async function askGemini(selectionText, question, qtype) {
     }
   }
 
-  return { ok: false, error: `Tất cả provider/token/model đều thất bại: ${lastErr.slice(0, 300)}` };
+  // LLM đều fail nhưng Tavily có kết quả -> vẫn trả về thứ dùng được.
+  const fallback = tavilyFallbackText(search);
+  if (fallback) {
+    return { ok: true, text: fallback, provider: "tavily", model: "Tavily · web search", sources };
+  }
+
+  return { ok: false, error: `Tất cả provider/token/model đều thất bại: ${lastErr.slice(0, 300)}${searchNote}` };
 }
 
 // ---------- Gemini full window ----------

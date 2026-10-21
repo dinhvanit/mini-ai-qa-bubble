@@ -69,6 +69,17 @@
         (rest ? `<div style="margin-top:6px;white-space:pre-wrap;">${rest}</div>` : "");
     }
 
+    // Nguồn Tavily (nếu có) -> link nhỏ [1] [2] [3]
+    function renderSources(sources) {
+      const list = (Array.isArray(sources) ? sources : []).filter((s) => s && s.url).slice(0, 3);
+      if (!list.length) return "";
+      return `<div style="margin-top:4px;font-size:10px;color:#9aa0a6;">Nguồn: ` +
+        list.map((s, i) =>
+          `<a href="${escapeHtml(s.url)}" target="_blank" rel="noreferrer" title="${escapeHtml(s.title || s.url)}" style="color:#1a73e8;text-decoration:none;">[${i + 1}]</a>`
+        ).join(" ") +
+        `</div>`;
+    }
+
     // ---- Bubble ----
     const container = document.createElement("div");
     container.id = "mini-gemini-bubble-container";
@@ -135,7 +146,7 @@
       if (res?.ok) {
         const ansIdx = answerStore.length;
         answerStore.push(res.text);
-        b.innerHTML += `<div style="margin-top:8px;padding:8px;border-radius:8px;background:#f1f3f4;">${renderAnswerHTML(res.text, qt)}<div style="margin-top:6px;text-align:right;"><button class="mg-copy-answer" data-idx="${ansIdx}" style="border:1px solid #dadce0;background:#fff;border-radius:8px;padding:3px 10px;cursor:pointer;font-size:11px;color:#80868b;">Copy đáp án</button></div></div>`;
+        b.innerHTML += `<div style="margin-top:8px;padding:8px;border-radius:8px;background:#f1f3f4;">${renderAnswerHTML(res.text, qt)}${renderSources(res.sources)}<div style="margin-top:6px;text-align:right;"><button class="mg-copy-answer" data-idx="${ansIdx}" style="border:1px solid #dadce0;background:#fff;border-radius:8px;padding:3px 10px;cursor:pointer;font-size:11px;color:#80868b;">Copy đáp án</button></div></div>`;
       } else if (res?.needKey) {
         b.innerHTML += `<div style="margin-top:8px;padding:8px;border-radius:8px;background:#fce8e6;color:#a50e0e;">${escapeHtml(res.error)}</div>`;
       } else {
@@ -243,6 +254,7 @@
             `<div class="mg-mini-body" style="padding:8px 10px;max-height:46vh;overflow-y:auto;overscroll-behavior:contain;">` +
             `<div style="color:#9aa0a6;font-size:11px;margin:6px 0;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">“${shortQ}”</div>` +
             renderAnswerHTML(res.text, qt) +
+            renderSources(res.sources) +
             `<div style="font-size:10px;color:#9aa0a6;margin:4px 0 2px;">via ${escapeHtml(res?.model || '')}</div>` +
             `<div style="margin-top:8px;display:flex;gap:6px;"><button id="mg-copy" style="flex:1;border:1px solid #dadce0;background:#fff;border-radius:8px;padding:5px;cursor:pointer;font-size:12px;">Copy</button><button id="mg-more" style="flex:1;background:rgba(218,220,224,0.8);color:#5f6368;border:none;border-radius:8px;padding:5px;cursor:pointer;font-size:12px;">Hỏi thêm</button></div>` +
             `</div>`;
