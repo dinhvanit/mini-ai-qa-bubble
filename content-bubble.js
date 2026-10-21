@@ -1,4 +1,4 @@
-// Mini Gemini v2.3 - content: panel mini tại chỗ, không popup to.
+// Mini AI v2.5 - content: panel mini tại chỗ, không popup to.
 // - Bôi đen -> nút "○ Hỏi" ngay tại chỗ bôi.
 // - Bấm -> panel 320px hiện câu trả lời ngay dưới, có ô hỏi thêm.
 // - Bubble ○ -> mở/đóng hộp chat mini (không mở cửa sổ lớn nữa).
@@ -33,25 +33,22 @@
       try { chrome.storage.local.set({ quizType: t }).catch(() => {}); } catch (e) {}
       paintTypeRows();
     }
-    function typeRowHTML() {
-      return `<div class="mg-types" style="display:flex;gap:4px;padding:8px 10px 0;flex-wrap:wrap;">` +
+    function typeSelectHTML() {
+      return `<select class="mg-qtype" title="Chế độ trả lời" style="border:1px solid #dadce0;border-radius:7px;padding:2px 4px;font-size:10px;color:#5f6368;background:#fff;outline:none;cursor:pointer;max-width:110px;">` +
         Object.keys(QTYPES).map((k) =>
-          `<button data-qtype="${k}" style="flex:1;border:1px solid #dadce0;border-radius:8px;padding:4px 2px;cursor:pointer;font-size:11px;white-space:nowrap;">${QTYPES[k]}</button>`
-        ).join("") + `</div>`;
+          `<option value="${k}"${k === quizType ? " selected" : ""}>${QTYPES[k]}</option>`
+        ).join("") + `</select>`;
     }
     function paintTypeRows() {
-      document.querySelectorAll("#mini-gemini-bubble-container .mg-types button, #mini-gemini-mini .mg-types button").forEach((btn) => {
-        const active = btn.getAttribute("data-qtype") === quizType;
-        btn.style.background = active ? "rgba(218,220,224,0.9)" : "#fff";
-        btn.style.color = active ? "#202124" : "#80868b";
-        btn.style.fontWeight = active ? "700" : "400";
+      document.querySelectorAll("#mini-gemini-bubble-container .mg-qtype, #mini-gemini-mini .mg-qtype").forEach((sel) => {
+        if (sel.value !== quizType) sel.value = quizType;
       });
     }
     function bindTypeRow(root, onPick) {
-      root.querySelectorAll(".mg-types button").forEach((btn) => {
-        btn.addEventListener("click", (e) => {
+      root.querySelectorAll(".mg-qtype").forEach((sel) => {
+        sel.addEventListener("change", (e) => {
           e.stopPropagation();
-          setQuizType(btn.getAttribute("data-qtype"));
+          setQuizType(sel.value);
           if (onPick) onPick();
         });
       });
@@ -88,8 +85,7 @@
     chat.id = "mini-gemini-chat";
     css(chat, "display:none;width:320px;max-height:420px;pointer-events:auto;background:#fff;border:1px solid #dadce0;border-radius:14px;box-shadow:0 8px 28px rgba(0,0,0,.25);overflow:hidden;font-family:sans-serif;overscroll-behavior:contain;");
     chat.innerHTML =
-      '<div style="padding:10px 12px;background:rgba(241,243,244,0.95);color:#9aa0a6;font-size:13px;font-weight:500;display:flex;justify-content:space-between;align-items:center;border-bottom:1px solid #eee;"><span>○ Mini</span><span id="mg-close" style="cursor:pointer;">✕</span></div>' +
-      typeRowHTML() +
+      '<div style="padding:8px 10px;background:rgba(241,243,244,0.95);color:#9aa0a6;font-size:13px;font-weight:500;display:flex;justify-content:space-between;align-items:center;gap:8px;border-bottom:1px solid #eee;"><span>○ Mini</span><span style="display:flex;align-items:center;gap:8px;min-width:0;">' + typeSelectHTML() + '<span id="mg-close" style="cursor:pointer;">✕</span></span></div>' +
       '<div id="mg-body" style="padding:10px 12px;font-size:13px;line-height:1.5;max-height:260px;overflow-y:auto;overscroll-behavior:contain;color:#5f6368;">Bôi đen text bất kỳ → bấm ○ Hỏi.<br>Hoặc gõ câu hỏi bên dưới.</div>' +
       '<div style="display:flex;gap:6px;padding:10px;border-top:1px solid #eee;"><input id="mg-input" placeholder="Hỏi gì đó..." style="flex:1;border:1px solid #dadce0;border-radius:8px;padding:7px 9px;font-size:13px;outline:none;"><button id="mg-send" style="background:rgba(218,220,224,0.8);color:#5f6368;border:none;border-radius:8px;padding:0 12px;cursor:pointer;font-size:14px;">➤</button></div>';
     container.appendChild(chat);
@@ -182,7 +178,7 @@
       if (t) showMini(t, r, "");
     });
 
-    function miniHeaderHTML(status, qtypeLabel, collapsed) {
+    function miniHeaderHTML(status, qtypeLabel, collapsed, showType) {
       const dot = status === "loading"
         ? `<span style="display:inline-block;width:10px;height:10px;border-radius:50%;border:2px solid #dadce0;border-top-color:#80868b;animation:mg-spin .8s linear infinite;vertical-align:-1px;"></span>`
         : status === "done"
@@ -190,7 +186,7 @@
           : `<span style="color:#d93025;font-size:12px;">!</span>`;
       return `<div class="mg-mini-head" title="Thu/mở" style="display:flex;justify-content:space-between;gap:6px;align-items:center;padding:5px 8px;background:rgba(241,243,244,0.95);border-bottom:1px solid #eee;cursor:pointer;user-select:none;">` +
         `<span style="font-size:12px;color:#9aa0a6;white-space:nowrap;">○ ${dot}</span>` +
-        `<span style="display:flex;gap:8px;align-items:center;"><span class="mg-mini-toggle" style="color:#9aa0a6;font-size:11px;">${collapsed ? "▸" : "▾"}</span><span class="mg-mini-close" style="cursor:pointer;color:#9aa0a6;font-size:11px;">✕</span></span></div>`;
+        `<span style="display:flex;gap:8px;align-items:center;min-width:0;">${showType ? typeSelectHTML() : ""}<span class="mg-mini-toggle" style="color:#9aa0a6;font-size:11px;">${collapsed ? "▸" : "▾"}</span><span class="mg-mini-close" style="cursor:pointer;color:#9aa0a6;font-size:11px;">✕</span></span></div>`;
     }
     function paintMiniCollapsed() {
       const b = mini.querySelector(".mg-mini-body");
@@ -201,7 +197,7 @@
     function bindMiniChrome(onToggle) {
       const head = mini.querySelector(".mg-mini-head");
       if (head) head.onclick = (e) => {
-        if (e.target && e.target.closest && e.target.closest(".mg-mini-close")) return;
+        if (e.target && e.target.closest && (e.target.closest(".mg-mini-close") || e.target.closest(".mg-qtype"))) return;
         miniCollapsed = !miniCollapsed;
         paintMiniCollapsed();
         if (onToggle) onToggle();
@@ -243,11 +239,11 @@
         if (myReq !== miniReqId) return; // request cũ (đổi loại giữa chừng) -> bỏ
         if (res?.ok) {
           mini.innerHTML =
-            miniHeaderHTML("done", QTYPES[qt] || qt, miniCollapsed) +
+            miniHeaderHTML("done", QTYPES[qt] || qt, miniCollapsed, true) +
             `<div class="mg-mini-body" style="padding:8px 10px;max-height:46vh;overflow-y:auto;overscroll-behavior:contain;">` +
-            typeRowHTML() +
             `<div style="color:#9aa0a6;font-size:11px;margin:6px 0;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">“${shortQ}”</div>` +
             renderAnswerHTML(res.text, qt) +
+            `<div style="font-size:10px;color:#9aa0a6;margin:4px 0 2px;">via ${escapeHtml(res?.model || '')}</div>` +
             `<div style="margin-top:8px;display:flex;gap:6px;"><button id="mg-copy" style="flex:1;border:1px solid #dadce0;background:#fff;border-radius:8px;padding:5px;cursor:pointer;font-size:12px;">Copy</button><button id="mg-more" style="flex:1;background:rgba(218,220,224,0.8);color:#5f6368;border:none;border-radius:8px;padding:5px;cursor:pointer;font-size:12px;">Hỏi thêm</button></div>` +
             `</div>`;
           bindMiniChrome();

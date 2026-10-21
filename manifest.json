@@ -1,8 +1,8 @@
 {
   "manifest_version": 3,
-  "name": "Mini Gemini Drag Bubble",
-  "version": "2.3.0",
-  "description": "Bong bóng Gemini mini: bôi đen để hỏi, trả lời ngay tại chỗ.",
+  "name": "Mini AI QA Bubble",
+  "version": "2.6.0",
+  "description": "Bong bóng AI mini: chọn provider → model → token, tự dò model mới, bôi đen để hỏi ngay tại chỗ.",
   "permissions": [
     "storage",
     "scripting",
@@ -12,13 +12,22 @@
   ],
   "host_permissions": [
     "<all_urls>",
-    "https://generativelanguage.googleapis.com/*"
+    "https://generativelanguage.googleapis.com/*",
+    "https://api.groq.com/*",
+    "https://api.openai.com/*",
+    "https://openrouter.ai/*",
+    "https://api.mistral.ai/*",
+    "https://integrate.api.nvidia.com/*",
+    "https://ollama.com/*",
+    "https://open.bigmodel.cn/*",
+    "https://api.sambanova.ai/*",
+    "https://opencode.ai/*"
   ],
   "background": {
     "service_worker": "background.js"
   },
   "action": {
-    "default_title": "Mini Gemini Drag Bubble",
+    "default_title": "Mini AI QA Bubble",
     "default_popup": "popup.html"
   },
   "content_scripts": [

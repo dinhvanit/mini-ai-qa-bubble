@@ -2,26 +2,63 @@
 <html lang="vi">
 <head>
     <meta charset="UTF-8">
-    <title>Mini Gemini</title>
+    <title>Mini</title>
     <link rel="stylesheet" href="popup.css">
 </head>
 <body>
-<div class="logo-area">○</div>
-<div class="title">Mini</div>
+<header class="head">
+    <span class="logo">○</span>
+    <span class="name">Mini</span>
+</header>
 
-<label class="key-label" for="api-key">Gemini API key</label>
-<input id="api-key" type="password" placeholder="Dán Gemini API key từ Google AI Studio" />
-<button id="btn-save" class="btn-open">Lưu key</button>
-<div id="key-status" class="key-status"></div>
+<main>
+    <label class="field">
+        <span>Provider</span>
+        <select id="sel-provider"></select>
+    </label>
 
-<div class="divider"><hr><span>hoặc</span><hr></div>
+    <label class="field">
+        <span class="field-label">Model
+            <button id="btn-refresh-models" type="button" class="mini-btn" title="Tải lại danh sách model">↻</button>
+        </span>
+        <select id="sel-model"></select>
+    </label>
 
-<button id="btn-open" class="btn-ghost">Mở bản full</button>
+    <label class="field">
+        <span>Token</span>
+        <select id="sel-token"></select>
+    </label>
 
-<div class="shortcut-hint">Bôi đen text → nút ○ Hỏi<br>Alt+G để hỏi nhanh</div>
-<div class="help"><a href="https://aistudio.google.com/apikey" target="_blank">Lấy key miễn phí ở đây</a></div>
-<div class="footer">v2.3.0 · mini panel, không popup to</div>
+    <div id="status" class="status" role="status"></div>
+    <button id="btn-test" class="btn">Test token</button>
 
+    <details class="manage">
+        <summary>Quản lý token</summary>
+        <textarea id="token-textarea" rows="3" spellcheck="false" autocomplete="off"></textarea>
+        <div class="hint">
+            <span>Mỗi dòng 1 token</span>
+            <a id="key-link" target="_blank" rel="noreferrer">Lấy key</a>
+        </div>
+        <button id="btn-save-tokens" class="btn">Lưu danh sách</button>
+    </details>
+
+    <details class="manage">
+        <summary>Prompt prefix</summary>
+        <textarea id="prompt-textarea" rows="3" spellcheck="false" placeholder="VD: Bạn là giáo viên, trả lời ngắn gọn, đi thẳng vào đáp án."></textarea>
+        <div class="hint">
+            <span>Ghép trước mọi câu hỏi</span>
+            <span>áp dụng mọi provider</span>
+        </div>
+        <button id="btn-save-prompt" class="btn">Lưu prefix</button>
+    </details>
+</main>
+
+<footer>
+    <button id="btn-open" class="link-btn">Mở bản full</button>
+    <div class="shortcut">Bôi đen → ○ Hỏi · Alt+G</div>
+</footer>
+
+<script src="providers.js"></script>
 <script src="popup.js"></script>
 </body>
 </html>
