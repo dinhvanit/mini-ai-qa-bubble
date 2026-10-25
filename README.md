@@ -48,6 +48,8 @@ Khi cần đổi nhanh chế độ trả lời, dùng dropdown ngay trên header
 
 ## Provider hỗ trợ
 
+So sánh tốc độ, quota và benchmark để chọn model: xem **[MODELS.md](MODELS.md)**.
+
 | Provider | Loại API | Lấy key |
 | --- | --- | --- |
 | Gemini | Gemini `generateContent` | https://aistudio.google.com/apikey |
@@ -81,6 +83,7 @@ content-bubble.js    # Bong bóng, panel mini và panel chat trên trang web
 popup.html/css/js    # Giao diện cấu hình provider, token, prompt, Tavily
 force-light.css/js   # Ép giao diện sáng cho panel (tránh bị dark mode trang web ghi đè)
 rules.json           # Rule DNR thử nghiệm, chưa khai báo trong manifest
+MODELS.md            # So sánh tốc độ, quota, benchmark các model free
 ```
 
 Luồng xử lý: `content-bubble.js` → `chrome.runtime.sendMessage` → `background.js` (chọn key, ghép prompt, gọi API) → trả kết quả về panel.
